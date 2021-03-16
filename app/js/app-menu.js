@@ -40,6 +40,68 @@ module.exports = function() {
     validateSBGNML(textXml);
     return chiseInstance.loadSample(filename, 'app/samples/', callback);
   }
+
+  function updatePalette(mapType) {
+
+    if(mapType === "AF") {
+      if($("#AF-palette-heading").hasClass("collapsed")) { // expand AF
+        $("#AF-palette-heading").click();
+      }        
+      if(! $("#PD-palette-heading").hasClass("collapsed")) { // collapse PD
+        $("#PD-palette-heading").click();
+      }
+      if(! $("#SIF-palette-heading").hasClass("collapsed")) { // collapse SIF
+        $("#SIF-palette-heading").click();
+      }        
+    }
+    else if(mapType === "PD"){
+      if($("#PD-palette-heading").hasClass("collapsed")) { // expand PD
+        $("#PD-palette-heading").click();
+      }
+      if(! $("#AF-palette-heading").hasClass("collapsed")) { // collapse AF
+        $("#AF-palette-heading").click();
+      }
+      if(! $("#SIF-palette-heading").hasClass("collapsed")) { // collapse SIF
+        $("#SIF-palette-heading").click();
+      }        
+    }
+    else if(mapType === "SIF"){
+      if($("#SIF-palette-heading").hasClass("collapsed")) { // expand SIF
+        $("#SIF-palette-heading").click();
+      }
+      if(! $("#PD-palette-heading").hasClass("collapsed")) { // collapse PD
+        $("#PD-palette-heading").click();
+      }        
+      if(! $("#AF-palette-heading").hasClass("collapsed")) { // collapse AF
+        $("#AF-palette-heading").click();
+      }
+    }
+    else if (mapType === "HybridSbgn") {
+      if($("#PD-palette-heading").hasClass("collapsed")) { // expand PD
+        $("#PD-palette-heading").click();
+      }
+      if($("#AF-palette-heading").hasClass("collapsed")) { // expand AF
+        $("#AF-palette-heading").click();
+      }
+      if(! $("#SIF-palette-heading").hasClass("collapsed")) { // collapse SIF
+        $("#SIF-palette-heading").click();
+      }
+    }
+    else if (mapType === "HybridAny") {
+      if($("#PD-palette-heading").hasClass("collapsed")) { // expand PD
+        $("#PD-palette-heading").click();
+      }
+      if($("#AF-palette-heading").hasClass("collapsed")) { // expand AF
+        $("#AF-palette-heading").click();
+      }
+      if($("#SIF-palette-heading").hasClass("collapsed")) { // expand SIF
+        $("#SIF-palette-heading").click();
+      }
+    }
+    else {
+      console.warn('invalid map type!');
+    }
+  }
   
   console.log('init the sbgnviz template/page');
 
@@ -169,42 +231,7 @@ module.exports = function() {
     if ( isActiveInstance ) {
 
       // select appropriate palette depending on the map
-      if(chiseInstance.elementUtilities.mapType == "AF") {
-        if($("#AF-palette-heading").hasClass("collapsed")) { // expand AF
-          $("#AF-palette-heading").click();
-        }        
-        if(! $("#PD-palette-heading").hasClass("collapsed")) { // collapse PD
-          $("#PD-palette-heading").click();
-        }
-        if(! $("#SIF-palette-heading").hasClass("collapsed")) { // collapse SIF
-          $("#SIF-palette-heading").click();
-        }        
-      }
-      else if(chiseInstance.elementUtilities.mapType == "PD"){
-        if($("#PD-palette-heading").hasClass("collapsed")) { // expand PD
-          $("#PD-palette-heading").click();
-        }
-        if(! $("#AF-palette-heading").hasClass("collapsed")) { // collapse AF
-          $("#AF-palette-heading").click();
-        }
-        if(! $("#SIF-palette-heading").hasClass("collapsed")) { // collapse SIF
-          $("#SIF-palette-heading").click();
-        }        
-      }
-      else if(chiseInstance.elementUtilities.mapType == "SIF"){
-        if($("#SIF-palette-heading").hasClass("collapsed")) { // expand SIF
-          $("#SIF-palette-heading").click();
-        }
-        if(! $("#PD-palette-heading").hasClass("collapsed")) { // collapse PD
-          $("#PD-palette-heading").click();
-        }        
-        if(! $("#AF-palette-heading").hasClass("collapsed")) { // collapse AF
-          $("#AF-palette-heading").click();
-        }
-      }
-      else {
-        console.warn('invalid map type!');
-      }
+      updatePalette(chiseInstance.elementUtilities.mapType)
 
     }
 
@@ -417,7 +444,7 @@ module.exports = function() {
         var errorCallback = function(){
           promptInvalidFileView.render();
         };       
-        params ={data: data, fileName: "acc_2014vs2019.txt", errorCallback: errorCallback};
+        params ={data: data, fileName: "acc_2014vs2019.txt", errorCallback: errorCallback, sampleExperiment: true};
         experimentTabPanel.loadExperiment(params);
         experimentTabPanel.render();
       };
@@ -664,6 +691,8 @@ module.exports = function() {
               chiseInstance.undoRedoActionFunctions.setDefaultProperty({class: nodeClass, name: 'background-position-x', value: '50%'});
               chiseInstance.undoRedoActionFunctions.setDefaultProperty({class: nodeClass, name: 'background-position-y', value: '50%'});
               chiseInstance.undoRedoActionFunctions.setDefaultProperty({class: nodeClass, name: 'background-image', value: classBgImg});
+              chiseInstance.undoRedoActionFunctions.setDefaultProperty({class: nodeClass, name: 'background-width', value: '100%'});
+              chiseInstance.undoRedoActionFunctions.setDefaultProperty({class: nodeClass, name: 'background-height', value: '100%'});
             }
           }
         }
@@ -780,12 +809,19 @@ module.exports = function() {
       cy.edges().select();
     });
 
-    $("#hide-selected, #hide-selected-icon").click(function(e) {
+    $("#hide-selected-smart, #hide-selected-smart-icon").click(function(e) {
 
       // use active cy instance
       var cy = appUtilities.getActiveCy();
 
       appUtilities.hideNodesSmart(cy.nodes(":selected"));
+      $('#inspector-palette-tab a').tab('show');
+    });
+
+    $("#hide-selected-simple, #hide-selected-simple-icon").click(function(e) {
+      var cy = appUtilities.getActiveCy();
+      
+      appUtilities.hideElesSimple(cy.elements(":selected"));
       $('#inspector-palette-tab a').tab('show');
     });
 
@@ -831,7 +867,7 @@ module.exports = function() {
       
       var selectedNodeSize = cy.nodes(':selected').length;
 
-      chiseInstance.deleteNodesSmart(cy.nodes(':selected'));
+      appUtilities.deleteNodesSmart(cy.nodes(':selected'));
       if(!chiseInstance.elementUtilities.isGraphTopologyLocked() && selectedNodeSize > 0)
         $('#inspector-palette-tab a').tab('show');
     });
@@ -1161,6 +1197,9 @@ module.exports = function() {
         animate: (cy.nodes().length > 3000 || cy.edges().length > 3000) ? false : currentGeneralProperties.animateOnDrawingChanges
       };
 
+      // set to false to apply incremental packing at the end of the layout
+      cy.layoutUtilities("get").setOption("randomize", false);
+
       layoutPropertiesView.applyLayout(preferences);
     });
 
@@ -1187,6 +1226,9 @@ module.exports = function() {
         animate: (cy.nodes().length > 3000 || cy.edges().length > 3000) ? false : currentGeneralProperties.animateOnDrawingChanges,
         randomize: true
       };
+
+      // set to true to apply randomized packing at the end of the layout
+      cy.layoutUtilities("get").setOption("randomize", true);
 
       layoutPropertiesView.applyLayout(preferences);
     });
@@ -1597,10 +1639,8 @@ module.exports = function() {
       $(document).on("keydown", function (event){
       if(!appUtilities.zoomShortcut){
         if(event.shiftKey){
-          //left command key code in webkit browsers (chrome, safari, opera) = 91
-          //right command key code in webkit browsers = 93
-          //command key code in firefox = 224
-          if(event.ctrlKey || event.keyCode == "91" || event.keyCode == "93" || event.keyCode == "224"){
+          // meta key for command key
+          if(event.ctrlKey || event.metaKey){
               //variable toggle to prevent multiple calls at the same time
               appUtilities.zoomShortcut = true; 
               //enable zoom shortcut mode      
@@ -1611,6 +1651,11 @@ module.exports = function() {
 
     });
 
+    // Update inspector on tab change
+    $('#sbgn-inspector a[data-toggle="tab"]').on('shown.bs.tab', function () {
+      inspectorUtilities.handleSBGNInspector();
+    });
+
     // on active network tab change
     $(document).on('shown.bs.tab', '#network-tabs-list  a[data-toggle="tab"]', function (e) {
       var target = $(e.target).attr("href"); // activated tab
@@ -1618,5 +1663,9 @@ module.exports = function() {
       appUtilities.setActiveNetwork(target);
       inspectorUtilities.handleSBGNInspector();
     });
+
+    $(document).on("changeMapTypeFromMenu", function(event, newMapType) {
+      updatePalette(newMapType);
+    }); 
   }
 };

@@ -812,6 +812,9 @@ appUtilities.triggerLayout = function (_cy, randomize) {
     preferences.fit = randomize;
   }
 
+  // set this to randomize parameter to decide the type of the packing that will be applied at the end of the layout
+  cy.layoutUtilities('get').setOption('randomize', randomize); 
+
 //  if (currentLayoutProperties.animate === 'during') {
 //    delete preferences.animate;
 //  }
@@ -1059,28 +1062,49 @@ appUtilities.showAll = function (_chiseInstance) {
     }
 };
 
-// Hides nodes and perform incremental layout afterward if Rearrange option is checked
-appUtilities.hideNodesSmart = function(eles, _chiseInstance) {
-
-    // check _chiseInstance param if it is set use it else use recently active chise instance
-    var chiseInstance = _chiseInstance || appUtilities.getActiveChiseInstance();
-
-    // get the associated cy instance
-    var cy = chiseInstance.getCy();
-
-    // get current general properties for cy instance
-    var currentGeneralProperties = appUtilities.getScratch(cy, 'currentGeneralProperties');
+appUtilities.deleteNodesSmart = function(nodes) {
+  var chiseInstance = appUtilities.getActiveChiseInstance();
+  var cy = chiseInstance.getCy();
+  var currentGeneralProperties = appUtilities.getScratch(cy, 'currentGeneralProperties');
 
     if (currentGeneralProperties.recalculateLayoutOnComplexityManagement )
     {
         //Put them near node and perform incremental layout
-        chiseInstance.hideAndPerformLayout(eles, this.triggerLayout.bind(this, cy, false));
+        chiseInstance.deleteAndPerformLayout(nodes, this.triggerLayout.bind(this, cy, false));
     }
     else
     {
         //Just show them
-        chiseInstance.hideNodesSmart(eles);
+        chiseInstance.deleteNodesSmart(nodes);
     }
+};
+
+// Hides nodes and perform incremental layout afterward if Rearrange option is checked
+appUtilities.hideNodesSmart = function(nodes, _chiseInstance) {
+
+    // check _chiseInstance param if it is set use it else use recently active chise instance
+    var chiseInstance = _chiseInstance || appUtilities.getActiveChiseInstance();
+
+    var cy = chiseInstance.getCy();
+
+    var currentGeneralProperties = appUtilities.getScratch(cy, 'currentGeneralProperties');
+
+    if (currentGeneralProperties.recalculateLayoutOnComplexityManagement )
+    {
+        chiseInstance.hideAndPerformLayout(nodes, this.triggerLayout.bind(this, cy, false));
+    }
+    else
+    {
+        chiseInstance.hideNodesSmart(nodes);
+    }
+};
+
+// Hides nodes and perform incremental layout afterward if Rearrange option is checked
+appUtilities.hideElesSimple = function(eles, _chiseInstance) {
+  // check _chiseInstance param if it is set use it else use recently active chise instance
+  var chiseInstance = _chiseInstance || appUtilities.getActiveChiseInstance();
+
+  chiseInstance.hideElesSimple(eles);
 };
 
 appUtilities.colorCodeToGradientImage = colorCodeToGradientImage = {
@@ -1964,6 +1988,15 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
   var cy = _cy || appUtilities.getActiveCy();
   var eles = cy.nodes();
 
+  var mapIdToValue = function(eles, value){
+    result = {};
+    for( var i = 0; i < eles.length; i++ ){
+      ele = eles[i];
+      result[ele.id()] = value;
+    }
+    return result;
+  };
+
   if(scheme_type == 'solid'){
 
     var idMap = appUtilities.mapEleClassToId(eles, mapColorSchemes[newColorScheme]['values']);
@@ -1971,25 +2004,32 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
     var collapsedIdMap = appUtilities.mapEleClassToId(collapsedChildren, mapColorSchemes[newColorScheme]['values']);
     var chiseInstance = appUtilities.getActiveChiseInstance();
 
-    var clearBgImg = function(eles){
-      result = {};
-      for( var i = 0; i < eles.length; i++ ){
-        ele = eles[i];
-        result[ele.id()] = '';
-      }
-      return result;
-    };
-
     var actions = [];
 
     // first clear the background images of already present elements
-    actions.push({name: "changeData", param: {eles: eles, name: 'background-image', valueMap: clearBgImg(eles)}});
-    // edit style of the current map elements
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-image', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-fit', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-position-x', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-position-y', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-width', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-height', valueMap: mapIdToValue(eles, '')}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-image-opacity', valueMap: mapIdToValue(eles, '')}});
+
+    // edit style of the current map elements, in solid scheme just change background-color
     actions.push({name: "changeData", param: {eles: eles, name: 'background-color', valueMap: idMap}});
+
     // first clear the background images of already present collapsed elements
-    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-image', valueMap: clearBgImg(collapsedChildren)}});   
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-image', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-fit', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-position-x', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-position-y', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-width', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-height', valueMap: mapIdToValue(collapsedChildren, '')}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-image-opacity', valueMap: mapIdToValue(collapsedChildren, '')}});
+   
     // collapsed nodes' style should also be changed, special edge case
     actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-color', valueMap: collapsedIdMap}});
+
     // if background-image isn't deleted from css, it is shown as soon as the node is expanded until the end of animation
     actions.push({name: "changeCss", param: {eles: collapsedChildren, name: 'background-image', valueMap: ""}});     
 
@@ -2006,7 +2046,8 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-position-y', value: ''}});
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-image', value: ''}});
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-width', value: ''}});
-        actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-height', value:''}});         
+        actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-height', value:''}});
+        actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-image-opacity', value:''}});         
       }
     }
 
@@ -2052,6 +2093,7 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
     actions.push({name: "changeData", param: {eles: eles, name: 'background-position-y', valueMap: mapPercentToPosition(eles, 50)}});
     actions.push({name: "changeData", param: {eles: eles, name: 'background-width', valueMap: mapPercentToPosition(eles, 100)}});
     actions.push({name: "changeData", param: {eles: eles, name: 'background-height', valueMap: mapPercentToPosition(eles, 100)}});
+    actions.push({name: "changeData", param: {eles: eles, name: 'background-image-opacity', valueMap: mapIdToValue(eles, '1')}});
 
     // collapsed nodes' style should also be changed, special edge case
     actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-color', valueMap: collapsedColorIDMap}});
@@ -2061,6 +2103,7 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
     actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-position-y', valueMap: mapPercentToPosition(collapsedChildren, 50)}});
     actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-width', valueMap: mapPercentToPosition(collapsedChildren, 100)}});
     actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-height', valueMap: mapPercentToPosition(collapsedChildren, 100)}});
+    actions.push({name: "changeDataDirty", param: {eles: collapsedChildren, name: 'background-image-opacity', valueMap: mapIdToValue(eles, '1')}});
     // if background-image isn't brought back into css, it isn't shown as soon as the node is expanded until the end of animation
     // the reason of for loop is that changeCss function cannot find collapsed nodes if valueMap is an object, but it works if it is a string   
     for(var i = 0; i < collapsedChildren.length; i++){
@@ -2082,8 +2125,7 @@ appUtilities.getActionsToApplyMapColorScheme = function(newColorScheme, scheme_t
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-image', value: classBgImg}});
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-width', value: '100%'}});
         actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-height', value:'100%'}});
-
-
+        actions.push({name: "setDefaultProperty", param: {class: nodeClass, name: 'background-image-opacity', value: '1'}});
       }
     }
   }
@@ -2144,7 +2186,6 @@ appUtilities.getAllStyles = function (_cy, _nodes, _edges) {
 
   var nodePropertiesToXml = {
     'background-color': 'fill',
-    'background-opacity': 'background-opacity', // not an sbgnml XML attribute, but used with fill
     'border-color': 'stroke',
     'border-width': 'strokeWidth',
     'font-size': 'fontSize',
@@ -2443,6 +2484,8 @@ appUtilities.setMapProperties = function(mapProperties, _chiseInstance) {
       }, {
         'width': function (ele) { return Math.max(parseFloat(ele.data('width')) + extraHighlightThickness, 3); },
         'line-color': highlightColor,
+        'color': highlightColor,
+        'text-border-color': highlightColor,
         'source-arrow-color': highlightColor,
         'target-arrow-color': highlightColor
     });
@@ -3101,5 +3144,14 @@ appUtilities.transformClassInfo = function( classInfo ) {
 // appUtilities.hideExperiments = function(){
 //   console.log("inapputil");
 // }
+
+// unselect all elements and then select all elements with
+// sbgn class matching the given element
+appUtilities.selectAllElementsOfSameType = function(ele) {
+  var cy = appUtilities.getActiveCy();
+  var sbgnclass = ele.data('class');
+  cy.elements().unselect();
+  cy.elements('[class="' + sbgnclass + '"]').select();
+};
 
 module.exports = appUtilities;

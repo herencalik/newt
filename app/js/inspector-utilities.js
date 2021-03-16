@@ -285,12 +285,12 @@ inspectorUtilities.handleSBGNInspector = function () {
 
       if (chiseInstance.elementUtilities.trueForAllElements(selectedEles, chiseInstance.elementUtilities.canHaveSBGNLabel)) {
         html += "<tr><td style='width: " + width + "px; text-align:right; padding-right: 5px;'>" + "<font class='sbgn-label-font'>Label</font>" + "</td><td style='padding-left: 5px;'>"
-              + "<input id='inspector-label' class='inspector-input-box' type='text' style='width: " + width / 1.5 + "px;' value='" + sbgnlabel.replace(/'/g, "&#039;")
-              + "'/>" + "</td></tr>";
+              + "<textarea id='inspector-label'  cols='8' rows='1' style='min-width: " + width / 1.5 + "px;' class='inspector-input-box'>" + sbgnlabel.replace(/'/g, "&#039;") 
+              + "</textarea>" + "</td></tr>";
       }
 
-      // if at least one node is not a non-resizable parent node
-      if( selectedEles.filter(':parent').length != selectedEles.length ) {
+      // if at least one node is a parent node don't show width and height editing fields
+      if( selectedEles.filter(':parent').length < 1 ) {
         html += "<tr><td style='width: " + width + "px; text-align:right; padding-right: 5px;'>" + "<font class='sbgn-label-font'>Width</font>" + "</td><td style='padding-left: 5px;'>"
                 + "<input id='inspector-node-width' class='inspector-input-box' type='number' min='0' style='width: " + buttonwidth + "px;'";
 
@@ -578,11 +578,18 @@ inspectorUtilities.handleSBGNInspector = function () {
     if (selectedEles.length === 1) {
       var geneClass = selectedEles[0]._private.data.class;
 
-      function addCollapsibleSection(identifier, title, hasSubtitleSection) {
-        html =  "<div  class='panel-heading collapsed' data-toggle='collapse' data-target='#"+identifier+"-collapsable'>"+
-                  "<p class='panel-title accordion-toggle'>"+title+"</p>"+
-                "</div>"+
-                "<div style='margin-top: 5px;align: center;text-align: center;' id='"+identifier+"-collapsable' class='panel-collapse collapse'>";
+      function addCollapsibleSection(identifier, title, hasSubtitleSection, openByDefault) {
+
+        var panelHeadingClass = openByDefault ? "panel-heading" : "panel-heading collapsed";
+        var panelHeadingId = identifier + "-heading";
+        var collapsibleClass = openByDefault ? "panel-collapse collapse in" : "panel-collapse collapse";
+        var collapsibleId = identifier + "-collapsible";
+
+        html = "<div id='" + panelHeadingId + "' class='" + panelHeadingClass +"' data-toggle='collapse' data-target='#"+ collapsibleId + "'>" +
+               "<p class='panel-title accordion-toggle'>" + title + "</p> </div>" +
+               "<div style='margin-top: 5px;align: center;text-align: center;'" + 
+               " id='" + collapsibleId + "' class='" + collapsibleClass + "'>";
+
         if (hasSubtitleSection) {
           html += "<div class='panel-body' style='padding-top: 3px; padding-left: 3px;' id='"+identifier+"-title'></div>";
         }
@@ -598,18 +605,22 @@ inspectorUtilities.handleSBGNInspector = function () {
           geneClass === 'BA macromolecule' || geneClass === 'BA nucleic acid feature' ||
           geneClass === 'BA unspecified entity' || geneClass === 'SIF macromolecule') {
 
-          addCollapsibleSection("biogene", "Properties from GeneCards", true);
+          addCollapsibleSection("biogene", "Properties from GeneCards", true, true);
           fillBioGeneContainer(selectedEles[0]);
       }
       if (geneClass === 'simple chemical' || geneClass === 'BA simple chemical' || geneClass === 'SIF simple chemical')
       {
-          addCollapsibleSection("chemical", "Properties from ChEBI", true);
-          fillChemicalContainer(selectedEles[0]);
+          addCollapsibleSection("chemical", "Properties from ChEBI", true, false);
+          fillChemicalContainer(selectedEles[0], function () { //callback on successful fetch, auto open collapsed panel
+            $("#chemical-collapsible").removeClass("collapse");
+            $("#chemical-collapsible").addClass("collapse in");
+            $("#chemical-heading").removeClass("collapsed");
+          });
       }
      
       
       // annotations handling part
-      addCollapsibleSection("annotations", "Custom Properties", false);
+      addCollapsibleSection("annotations", "Custom Properties", false, false);
       annotHandler.fillAnnotationsContainer(selectedEles[0]);
     }
 
@@ -937,14 +948,9 @@ inspectorUtilities.handleSBGNInspector = function () {
         }
 
         var useAspectRatio = appUtilities.nodeResizeUseAspectRatio;
-
-        // trigger resize event accordingly
-        selectedEles.forEach(function(node) {
-          cy.trigger('nodeediting.resizestart', [null, node]);
-          chiseInstance.resizeNodes(node, w, h, useAspectRatio);
-          cy.trigger('nodeediting.resizeend', [null, node]);
-        });
-
+        
+        chiseInstance.resizeNodes(selectedEles, w, h, useAspectRatio);
+        
         // if aspect ratio used, must correctly update the other side length
         if(useAspectRatio){
           if( $(this).attr('id') === 'inspector-node-width' ) {

@@ -269,7 +269,7 @@ module.exports = function (cy) {
   appUndoActions.loadExperimentData = function (param){
     var cy = appUtilities.getActiveCy();
     var chiseInstance = appUtilities.getActiveChiseInstance();
-    var result = chiseInstance.parseData(param.data, param.fileName, param.errorCallback);
+    var result = chiseInstance.parseData(param.data, param.fileName, param.errorCallback, param.sampleExperiment);
     if(result != "Error"){
       appUndoActions.changeMenu(param.self.params.experimentDescription);
     }
@@ -368,6 +368,8 @@ module.exports = function (cy) {
     }, {
       'width': function (ele) { return Math.max(parseFloat(ele.data('width')) + extraHighlightThickness, 3); },
       'line-color': highlightColor,
+      'color': highlightColor,
+      'text-border-color': highlightColor,
       'source-arrow-color': highlightColor,
       'target-arrow-color': highlightColor
     });

@@ -72,7 +72,9 @@ module.exports = function (chiseInstance) {
       // whether to initilize bend points on creation of this extension automatically
       initAnchorsAutomatically: false,
       // function to validate edge source and target on reconnection
-      validateEdge: chiseInstance.elementUtilities.validateArrowEnds,
+      validateEdge: function (edge, newSource, newTarget) {
+        return chiseInstance.elementUtilities.validateArrowEnds(edge, newSource, newTarget, true);
+      },
       // function to be called on invalid edge reconnection
       actOnUnsuccessfulReconnection: function () {
         if(appUtilities.promptInvalidEdgeWarning){
@@ -92,6 +94,10 @@ module.exports = function (chiseInstance) {
         image: {src : "app/img/toolbar/settings.svg", width : 16, height : 16, x : 2, y : 3},
         coreAsWell: true,
         onClickFunction: function (event) {
+          // take focus away from other tabs before showing properties tab
+          $('a[data-toggle="tab"]').one('show.bs.tab', function (e) {
+            e.relatedTarget.blur();
+          });
           $("#general-properties").trigger("click");
         }
       },
@@ -121,9 +127,9 @@ module.exports = function (chiseInstance) {
       {
         id: 'ctx-menu-hide-selected',
         content: 'Hide Selected',
-        image: {src : "app/img/toolbar/hide-selected.svg", width : 16, height : 16, x : 2, y : 3},
+        image: {src : "app/img/toolbar/hide-selected-smart.svg", width : 16, height : 16, x : 2, y : 3},
         onClickFunction: function () {
-          $("#hide-selected").trigger('click');
+          $("#hide-selected-smart").trigger('click');
         },
         coreAsWell: true // Whether core instance have this item on cxttap
       },
@@ -219,10 +225,7 @@ module.exports = function (chiseInstance) {
         selector: 'node, edge',
         onClickFunction: function (event) {
           var cyTarget = event.target || event.cyTarget;
-          var sbgnclass = cyTarget.data('class');
-
-          cy.elements().unselect();
-          cy.elements('[class="' + sbgnclass + '"]').select();
+          appUtilities.selectAllElementsOfSameType(cyTarget);
         }
       },
       {
@@ -428,6 +431,24 @@ module.exports = function (chiseInstance) {
       }
     });
 
+    function getProcessBasedNeighbors(node) {
+      var nodesToSelect = node;
+      if(chiseInstance.elementUtilities.isPNClass(node) || chiseInstance.elementUtilities.isLogicalOperator(node)){
+          nodesToSelect = nodesToSelect.union(node.openNeighborhood());
+      }
+      node.openNeighborhood().forEach(function(ele){
+          if(chiseInstance.elementUtilities.isPNClass(ele) || chiseInstance.elementUtilities.isLogicalOperator(ele)){
+              nodesToSelect = nodesToSelect.union(ele.closedNeighborhood());
+              ele.openNeighborhood().forEach(function(ele2){
+                  if(chiseInstance.elementUtilities.isPNClass(ele2) || chiseInstance.elementUtilities.isLogicalOperator(ele2)){
+                      nodesToSelect = nodesToSelect.union(ele2.closedNeighborhood());
+                  }
+              });
+          }
+      });
+      return nodesToSelect;
+    }
+
     cy.viewUtilities({
       highlightStyles: [
         {
@@ -435,6 +456,8 @@ module.exports = function (chiseInstance) {
           edge: {
             'width': function (ele) { return Math.max(parseFloat(ele.data('width')) + 2, 3); },
             'line-color': '#0B9BCD',
+            'color': '#0B9BCD',
+            'text-border-color': '#0B9BCD',
             'source-arrow-color': '#0B9BCD',
             'target-arrow-color': '#0B9BCD'
           }
@@ -448,34 +471,30 @@ module.exports = function (chiseInstance) {
         },
         edge: {
           'line-color': '#d67614',
+          'color': '#d67614',
+          'text-border-color': '#d67614',
           'source-arrow-color': '#d67614',
           'target-arrow-color': '#d67614',
         }
       },
-      neighbor: function(node){ //select and return process-based neighbors
-        var nodesToSelect = node;
-        if(chiseInstance.elementUtilities.isPNClass(node) || chiseInstance.elementUtilities.isLogicalOperator(node)){
-            nodesToSelect = nodesToSelect.union(node.openNeighborhood());
+      neighbor: function(ele){ //select and return process-based neighbors
+        if (ele.isNode()) {
+          return getProcessBasedNeighbors(ele);
         }
-        node.openNeighborhood().forEach(function(ele){
-            if(chiseInstance.elementUtilities.isPNClass(ele) || chiseInstance.elementUtilities.isLogicalOperator(ele)){
-                nodesToSelect = nodesToSelect.union(ele.closedNeighborhood());
-                ele.openNeighborhood().forEach(function(ele2){
-                    if(chiseInstance.elementUtilities.isPNClass(ele2) || chiseInstance.elementUtilities.isLogicalOperator(ele2)){
-                        nodesToSelect = nodesToSelect.union(ele2.closedNeighborhood());
-                    }
-                });
-            }
-        });
-        return nodesToSelect;
+        else if (ele.isEdge()) {
+          var sourceNode = ele.source();
+          var targetNode = ele.target();
+          var elementsToSelect = getProcessBasedNeighbors(sourceNode)
+                                .union(getProcessBasedNeighbors(targetNode));
+          return elementsToSelect;
+        }
       },
       neighborSelectTime: 500 //ms
     });
     
     cy.layoutUtilities({
-      componentSpacing: 30,
       desiredAspectRatio: $(cy.container()).width() / $(cy.container()).height()
-    })
+    });
 
     cy.nodeEditing({
       padding: 2, // spacing between node and grapples/rectangle
@@ -797,6 +816,11 @@ module.exports = function (chiseInstance) {
       cy.style().update();
       inspectorUtilities.handleSBGNInspector();
 
+      var chiseInstance = appUtilities.getActiveChiseInstance();
+      if (chiseInstance.getMapType()) {
+        document.getElementById('map-type').value = chiseInstance.getMapType();
+      }
+
       if(actionName == "resize") {
         var node = res.node;
         // ensure consistency of infoboxes through resizing
@@ -824,6 +848,11 @@ module.exports = function (chiseInstance) {
       refreshUndoRedoButtonsStatus(cy);
       cy.style().update();
       inspectorUtilities.handleSBGNInspector();
+
+      var chiseInstance = appUtilities.getActiveChiseInstance();
+      if (chiseInstance.getMapType()) {
+        document.getElementById('map-type').value = chiseInstance.getMapType();
+      }
 
       if(actionName == "resize") {
         var node = res.node;
@@ -984,6 +1013,16 @@ module.exports = function (chiseInstance) {
 
     cy.on('tapend', function (event, relPos) {
 
+      // This is a bit of a patch
+      // Without this the alt + taphold shortcut for selection of objects of same type doesn't work
+      // as all the elements except the original event target will be unselected without this
+      if (altTapholdSelection) {
+        setTimeout(function() {
+          cy.autounselectify(false);
+        }, 100);
+        altTapholdSelection = null;
+      }
+
       relPos = relPos || false;
       $('input').blur();
 
@@ -1085,23 +1124,21 @@ module.exports = function (chiseInstance) {
             if (chiseInstance.getMapType() && !isMapTypeValid){
 
               appUtilities.promptMapTypeView.render("You cannot add element of type "+ appUtilities.mapTypesToViewableText[nodeParams.language]  + " to a map of type "+appUtilities.mapTypesToViewableText[currentMapType] +"!","You can change map type from Map Properties.");
-             /*  appUtilities.promptMapTypeView.render(function(){
-                  chiseInstance.addNode(cyPosX, cyPosY, nodeParams, undefined, parentId);}); */
             }
             else{
               chiseInstance.addNode(cyPosX, cyPosY, nodeParams, undefined, parentId);
-            }
-            if (nodeType === 'process' || nodeType === 'omitted process' || nodeType === 'uncertain process' || nodeType === 'association' || nodeType === 'dissociation'  || nodeType === 'and'  || nodeType === 'or'  || nodeType === 'not')
-            {
-                var newEle = cy.nodes()[cy.nodes().length - 1];
-                var defaultPortsOrdering = chiseInstance.elementUtilities.getDefaultProperties(nodeType)['ports-ordering'];
-                chiseInstance.elementUtilities.setPortsOrdering(newEle, ( defaultPortsOrdering ? defaultPortsOrdering : 'L-to-R'));
-            }
+              if (nodeType === 'process' || nodeType === 'omitted process' || nodeType === 'uncertain process' || nodeType === 'association' || nodeType === 'dissociation'  || nodeType === 'and'  || nodeType === 'or'  || nodeType === 'not')
+                {
+                    var newEle = cy.nodes()[cy.nodes().length - 1];
+                    var defaultPortsOrdering = chiseInstance.elementUtilities.getDefaultProperties(nodeType)['ports-ordering'];
+                    chiseInstance.elementUtilities.setPortsOrdering(newEle, ( defaultPortsOrdering ? defaultPortsOrdering : 'L-to-R'));
+                }
 
-            // If the node will not be added to the root then the parent node may be resized and the top left corner pasition may change after
-            // the node is added. Therefore, we may need to clear the expand collapse viusal cue.
-            if (parent) {
-              cy.expandCollapse('get').clearVisualCue();
+                // If the node will not be added to the root then the parent node may be resized and the top left corner pasition may change after
+                // the node is added. Therefore, we may need to clear the expand collapse viusal cue.
+                if (parent) {
+                  cy.expandCollapse('get').clearVisualCue();
+                }
             }
           }
         }
@@ -1348,6 +1385,17 @@ module.exports = function (chiseInstance) {
       });
 
       node.style(opt);
+    });
+
+    // Select elements of same type (sbgn class) on taphold + alt key down
+    var altTapholdSelection;
+    cy.on('taphold', 'node, edge', function (event) {
+      if (appUtilities.altKeyDown) {
+        var cyTarget = event.target || event.cyTarget;
+        appUtilities.selectAllElementsOfSameType(cyTarget);
+        cy.autounselectify(true);
+        altTapholdSelection = true;
+      }
     });
 
     /* removed coz of  complications 

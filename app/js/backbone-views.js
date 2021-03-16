@@ -397,6 +397,20 @@ var ColorSchemeInspectorView = Backbone.View.extend({
     this.schemes_gradient = schemes_gradient;
     this.schemes_3D = schemes_3D;
 
+    // clone markers that are background images (unspecified entity and perturbing agent)
+    // get removed when color scheme is updated
+    var updateCloneMarkers = function () {
+      var chiseInstance = appUtilities.getActiveChiseInstance();
+      var cy = appUtilities.getActiveCy();
+      var nodesThatNeedCloneMarkerUpdate = cy.nodes().filter(function(node) {
+        return ((node.data('class') === "unspecified entity") || 
+                (node.data('class') === "perturbing agent")) 
+                && 
+                node.data('clonemarker');  
+      });
+      chiseInstance.redrawCloneMarkers(nodesThatNeedCloneMarkerUpdate, true);
+    }
+
     // attach events
     $(document).on("click", "div.color-scheme-choice", function (evt) {
       var cy = appUtilities.getActiveCy();
@@ -404,6 +418,7 @@ var ColorSchemeInspectorView = Backbone.View.extend({
       var raw_id = $(this).attr('id');
       var scheme_id = raw_id.replace("map-color-scheme_", "");
       appUtilities.applyMapColorScheme(scheme_id, scheme_type, self);
+      updateCloneMarkers();
     });
 
     $(document).on("change", "#color-scheme-inspector-style-select", function (event) {
@@ -413,6 +428,7 @@ var ColorSchemeInspectorView = Backbone.View.extend({
       var selected_style = $('#color-scheme-inspector-style-select').val();
       //change to the color scheme choice to match current style
       appUtilities.applyMapColorScheme(current_scheme_id,selected_style,self);
+      updateCloneMarkers();
     });
 
     $(document).on("click", "div.color-scheme-invert-button", function (evt) {
@@ -422,6 +438,7 @@ var ColorSchemeInspectorView = Backbone.View.extend({
       var scheme_id = raw_id.replace("map-color-scheme_invert_", "");
       var inverted_id = schemes[scheme_id].invert;
       appUtilities.applyMapColorScheme(inverted_id, scheme_type, self);
+      updateCloneMarkers();
     });
 
     $(document).on("click", "#map-color-scheme-default-button", function (evt) {
@@ -429,6 +446,7 @@ var ColorSchemeInspectorView = Backbone.View.extend({
       var defaultColorScheme = appUtilities.defaultGeneralProperties.mapColorScheme;
       var defaultColorSchemeStyle = appUtilities.defaultGeneralProperties.mapColorSchemeStyle;
       appUtilities.applyMapColorScheme(defaultColorScheme, defaultColorSchemeStyle, self); // default color scheme
+      updateCloneMarkers();
     });
   
   },
@@ -598,6 +616,7 @@ var MapTabGeneralPanel = GeneralPropertiesParentView.extend({
       if(cy.elements().length == 0){
         //chiseInstance.elementUtilities.setMapType(newMapType);
         cy.undoRedo().do("changeMapType", {mapType: newMapType, callback : callback});
+        $(document).trigger("changeMapTypeFromMenu", [newMapType]);
         return;
       }
       var currentMapType = chiseInstance.getMapType();
@@ -679,11 +698,10 @@ var MapTabGeneralPanel = GeneralPropertiesParentView.extend({
       }
        if(validChange){
         cy.undoRedo().do("changeMapType", {mapType: newMapType, callback : callback});
-         //chiseInstance.elementUtilities.setMapType(newMapType);
+        $(document).trigger("changeMapTypeFromMenu", [newMapType]);
        }else{
         $("#map-type").val(currentMapType);
          appUtilities.promptMapTypeView.render("You cannot change map type "+ appUtilities.mapTypesToViewableText[currentMapType] + " to a map of type "+appUtilities.mapTypesToViewableText[newMapType]+"!");
-         
        }
     
       $('#map-type').blur();
@@ -802,6 +820,8 @@ var MapTabGeneralPanel = GeneralPropertiesParentView.extend({
       }, {
         'width': function (ele) { return Math.max(parseFloat(ele.data('width')) + extraHighlightThickness, 3); },
         'line-color': highlightColor,
+        'color': highlightColor,
+        'text-border-color': highlightColor,
         'source-arrow-color': highlightColor,
         'target-arrow-color': highlightColor
       });
@@ -826,6 +846,8 @@ var MapTabGeneralPanel = GeneralPropertiesParentView.extend({
       }, {
         'width': function (ele) { return Math.max(parseFloat(ele.data('width')) + extraHighlightThickness, 3); },
         'line-color': highlightColor,
+        'color': highlightColor,
+        'text-border-color': highlightColor,
         'source-arrow-color': highlightColor,
         'target-arrow-color': highlightColor
       });
@@ -841,7 +863,9 @@ var MapTabGeneralPanel = GeneralPropertiesParentView.extend({
 
     $(document).on("shown.bs.tab", "#inspector-map-tab", function (evt) {
       var chiseInstance = appUtilities.getActiveChiseInstance();
-      //document.getElementById('map-type').value = chiseInstance.getMapType() ? chiseInstance.getMapType() : "Unknown";
+      if (chiseInstance.getMapType()) {
+        document.getElementById('map-type').value = chiseInstance.getMapType();
+      }
     });
 
     $(document).on("click", "#map-general-default-button", function (evt) {
@@ -1226,12 +1250,24 @@ var experimentTabPanel = GeneralPropertiesParentView.extend({
         s += '</tr>';
       }
       elem.innerHTML = s;
-
+      var tableInitialOrderHtml = s;
+      var tableOrdering = 'initialOrder';
       // change `let i` to `var i` to see the difference
       for (let i = 0; i < headers.length; i++) {
         $(document).off('click', '#sortable-table-header-' + i);
         $(document).on('click', '#sortable-table-header-' + i, function () {
-          sortTable(document.getElementById('map-exp-table'), i);
+          if (tableOrdering === 'initialOrder') {
+            sortTable(document.getElementById('map-exp-table'), i, 'asc');
+            tableOrdering = 'ascendingOrder';
+          }
+          else if (tableOrdering === 'ascendingOrder') {
+            sortTable(document.getElementById('map-exp-table'), i, 'desc');
+            tableOrdering = 'descendingOrder';
+          }
+          else if (tableOrdering === 'descendingOrder') {
+            elem.innerHTML = tableInitialOrderHtml;
+            tableOrdering = 'initialOrder';
+          }
         });
       }
 
@@ -1444,7 +1480,7 @@ var experimentTabPanel = GeneralPropertiesParentView.extend({
     var ur = cy.undoRedo();
     var actions = [];
     //after the deleting the first experiemnt color schme should come back
-    if(firstExperiment == undefined || Object.keys(firstExperiment).length == 0)
+    if(firstExperiment == undefined || Object.keys(firstExperiment).length == 0 || params.sampleExperiment)
     {
       var defaultColorScheme = appUtilities.defaultGeneralProperties.mapColorScheme;
       var defaultColorSchemeStyle = appUtilities.defaultGeneralProperties.mapColorSchemeStyle;
@@ -2599,25 +2635,31 @@ var FileSaveView = Backbone.View.extend({
               && !chiseInstance.elementUtilities.isSIFNode( edge.data('target') );
           } );
         }
+        
         else if ( chiseInstance.elementUtilities.mapType === 'SIF' && properties.enableSIFTopologyGrouping ) {
-          // get topologyGrouping instance for cy
+          
+          // get nodes and edges
+          
+          edges = cy.edges();
           var topologyGrouping = chiseInstance.sifTopologyGrouping;
-          var compoundGroups = topologyGrouping.getGroupCompounds();
           var metaEdges = topologyGrouping.getMetaEdges();
-
-          nodes = cy.nodes().not( compoundGroups );
-          edges = cy.edges().not( metaEdges );
-
           metaEdges.forEach( function( edge ) {
             edges = edges.union( edge.data('tg-to-restore') );
           } );
+          
+          nodes = cy.nodes();
         }
-
+        
         renderInfo = appUtilities.getAllStyles(cy, nodes, edges);
 
-        // Exclude extensions if the version is plain
-        if (version === "plain" || version === "plain3") {
+        // If the version is plain, exclude all extensions
+        if (version === "plain") {
           saveAsFcn(filename, version, undefined, undefined, nodes, edges);
+        }
+        // If the version is plain3, write renderInfo but not map properties
+        // which are specific to newt
+        else if (version === "plain3") {
+          saveAsFcn(filename, version, renderInfo, undefined, nodes, edges);
         }
         else {
           saveAsFcn(filename, version, renderInfo, properties, nodes, edges);
@@ -3369,22 +3411,32 @@ var ReactionTemplateView = Backbone.View.extend({
       $('#template-reversible-output-table :input.template-reaction-textbox[name="'+i+'"]').closest('tr').remove();
     }
   },
-  switchInputOutput: function (e) {
+  changeTemplateHTMLContent: function (templateType) {
     var self = this;
-    if(e == "association") {
-      $('#reaction-template-left-td').html(self.associatedHTMLContent);
-      $('#reaction-template-right-td').html(self.dissociatedHTMLContent);
-    }
-    else if(e == "dissociation"){
-      $('#reaction-template-left-td').html(self.dissociatedHTMLContent);
-      $('#reaction-template-right-td').html(self.associatedHTMLContent);
-    }
-    else{
-      $('#reaction-template-left-td').html(self.reversibleInputHTMLContent);
-      $('#reaction-template-right-td').html(self.reversibleOutputHTMLContent);
+
+    $('#reaction-template-left-td').html(self.reactionTemplatesHTMLContent[templateType]["input-side"]);
+    $('#reaction-template-right-td').html(self.reactionTemplatesHTMLContent[templateType]["output-side"]);
+    $('#reaction-template-help-link').attr('href', self.reactionTemplatesHTMLContent[templateType]["help-link"]);
+
+    if (templateType === "reversible" || templateType === "irreversible" || templateType === "catalytic") {
       self.disableDeleteButtonStyle("left");
-      self.disableDeleteButtonStyle("right");
+      self.disableDeleteButtonStyle("right")
     }
+    if (templateType === "catalytic" || templateType === "activation" || templateType === "deactivation") {
+      $('#reaction-special-input-row').html(self.reactionTemplatesHTMLContent[templateType]["special-input"]);
+      $('#reaction-special-input-row').removeClass("hide");
+    }
+    else {
+      $('#reaction-special-input-row').addClass("hide");
+    }
+
+    if (templateType === "transcription" || templateType === "translation") {
+      $('#template-input-side-indicator').html("<b> Necessary Stimulation </b>")
+    }
+    else {
+      $('#template-input-side-indicator').html("<b> Input </b>")
+    }
+
   },
   getAllParameters: function () {
     var templateType = $('#reaction-template-type-select').val();
@@ -3450,6 +3502,49 @@ var ReactionTemplateView = Backbone.View.extend({
       templateReactionEnableComplexName: templateReactionEnableComplexName
     }
   },
+  getCatalyticActivityParameters: function () {
+    var catalyticInputNodeNames = $('#template-reversible-input-table :input.template-reaction-textbox').map(function(){
+      return $(this).val();
+    }).toArray();
+    var catalyticInputNodeTypes = $('#template-reversible-input-table :input.template-reaction-molecule-type :selected').map(function(){
+      return $(this).val();
+    }).toArray();
+    var catalyticOutputNodeNames = $('#template-reversible-output-table :input.template-reaction-textbox').map(function(){
+      return $(this).val();
+    }).toArray();
+    var catalyticOutputNodeTypes = $('#template-reversible-output-table :input.template-reaction-molecule-type :selected').map(function(){
+      return $(this).val();
+    }).toArray();
+
+    var catalyticInputNodeList = [];
+    for(var i = 0; i < catalyticInputNodeNames.length; i++){
+      catalyticInputNodeList.push(
+        {
+          name: catalyticInputNodeNames[i],
+          type: catalyticInputNodeTypes[i]
+        }
+      );
+    }
+    var catalyticOutputNodeList = [];
+    for(var i = 0; i < catalyticOutputNodeNames.length; i++){
+      catalyticOutputNodeList.push(
+        {
+          name: catalyticOutputNodeNames[i],
+          type: catalyticOutputNodeTypes[i]
+        }
+      );
+    }
+
+    var catalystName = $('#catalytic-reaction-catalyst-name').val();
+    var catalystType = $('#catalyst-type-select :selected').val();
+
+    return {
+      inputNodeData: catalyticInputNodeList,
+      outputNodeData: catalyticOutputNodeList,
+      catalystName: catalystName,
+      catalystType: catalystType
+    };
+  },
   disableDeleteButtonStyle: function (type) {
     if(type == "reaction"){
       $("img.template-reaction-delete-button").css("opacity", 0.2);
@@ -3484,10 +3579,21 @@ var ReactionTemplateView = Backbone.View.extend({
     var self = this;
     self.template = _.template($("#reaction-template-template").html());
 
+    $(document).on("input", "#template-activation-protein-name", function() {
+      var value = $(this).val();
+      $('#template-activation-protein-name-input').val(value);
+      $('#template-activation-protein-name-output').val(value);
+    });
+
+    $(document).on("input", "#template-deactivation-protein-name", function() {
+      var value = $(this).val();
+      $('#template-deactivation-protein-name-input').val(value);
+      $('#template-deactivation-protein-name-output').val(value);
+    });
 
     $(document).on('change', '#reaction-template-type-select', function (e) {
       var valueSelected = $(this).val();
-      self.switchInputOutput(valueSelected);
+      self.changeTemplateHTMLContent(valueSelected);
       self.disableDeleteButtonStyle("reaction");
     });
 
@@ -3563,21 +3669,49 @@ var ReactionTemplateView = Backbone.View.extend({
 
       // get current layout properties for cy
       var currentLayoutProperties = appUtilities.getScratch(cy, 'currentLayoutProperties');
-
-      var params = self.getAllParameters();
-
-      var templateType = params.templateType;
-      var nodeList = params.nodeList;
-      var complexName = params.templateReactionEnableComplexName ? params.templateReactionComplexName : undefined;
       var tilingPaddingVertical = chiseInstance.calculatePaddings(currentLayoutProperties.tilingPaddingVertical);
       var tilingPaddingHorizontal = chiseInstance.calculatePaddings(currentLayoutProperties.tilingPaddingHorizontal);
-      var layoutParam = {name: "fcose"};
-      if(templateType == "reversible"){
-        nodeList = params.reversibleInputNodeList;
-        complexName = params.reversibleOutputNodeList;
-      }
-      chiseInstance.createTemplateReaction(templateType, nodeList, complexName, undefined, tilingPaddingVertical, tilingPaddingHorizontal, undefined, layoutParam);
 
+      var templateType = $('#reaction-template-type-select').val();
+      var layoutParam = {name: "fcose"};
+
+      if (templateType === "activation") {
+        const proteinName = $("#template-activation-protein-name").val();
+        chiseInstance.createActivationReaction(proteinName, undefined, undefined, false);
+      }
+      else if (templateType === "deactivation") {
+        const proteinName = $('#template-deactivation-protein-name').val();
+        chiseInstance.createActivationReaction(proteinName, undefined, undefined, true);
+      }
+      else if (templateType === "catalytic") {
+        var params = self.getCatalyticActivityParameters();
+        chiseInstance.createMetabolicCatalyticActivity(params.inputNodeData, params.outputNodeData, params.catalystName, params.catalystType, undefined, tilingPaddingVertical, tilingPaddingHorizontal, undefined);
+      }
+      else if (templateType === "transcription") {
+        const geneName = $('#template-transcription-gene-name').val();
+        const mRnaName = $('#template-transcription-mrna-name').val();
+        chiseInstance.createTranscriptionReaction(geneName, mRnaName, undefined, undefined);
+      }
+      else if (templateType === "translation") {
+        const mRnaName = $('#template-translation-mrna-name').val();
+        const proteinName = $('#template-translation-protein-name').val();
+        chiseInstance.createTranslationReaction(mRnaName, proteinName, undefined, undefined);
+      }
+      else { // association, dissociation, reversible, irreversible handled here 
+        var params = self.getAllParameters();
+      
+        var templateType = params.templateType;
+        var nodeList = params.nodeList;
+        var complexName = params.templateReactionEnableComplexName ? params.templateReactionComplexName : undefined;
+      
+        if(templateType === "reversible" || templateType === "irreversible"){
+          nodeList = params.reversibleInputNodeList;
+          complexName = params.reversibleOutputNodeList;
+        }
+        chiseInstance.createTemplateReaction(templateType, nodeList, complexName, undefined, tilingPaddingVertical, tilingPaddingHorizontal, undefined, layoutParam);
+
+      }
+      
       //Update arrow-scale of newly added edges (newly added elements are selected so we just update selected edges)
       var currentArrowScale = Number($('#arrow-scale').val());
       cy.edges(":selected").style('arrow-scale', currentArrowScale);
@@ -3596,10 +3730,57 @@ var ReactionTemplateView = Backbone.View.extend({
     self.disableDeleteButtonStyle("reaction");
 
     $(self.el).modal('show');
-    self.associatedHTMLContent = $('#reaction-template-left-td').html();
-    self.dissociatedHTMLContent = $('#reaction-template-right-td').html();
-    self.reversibleInputHTMLContent = $('#reversible-template-left-td').html();
-    self.reversibleOutputHTMLContent = $('#reversible-template-right-td').html();
+    
+    self.reactionTemplatesHTMLContent = {
+      "association": {
+        "input-side": $('#reaction-template-left-td').html(),
+        "output-side": $("#reaction-template-right-td").html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000571/"
+      },
+      "dissociation": {
+        "input-side": $('#reaction-template-right-td').html(),
+        "output-side": $('#reaction-template-left-td').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000571/"
+      },
+      "reversible": {
+        "input-side": $('#reversible-template-left-td').html(),
+        "output-side": $('#reversible-template-right-td').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000514/"
+      },
+      "irreversible": {
+        "input-side": $('#reversible-template-left-td').html(),
+        "output-side": $('#reversible-template-right-td').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000511/"
+      },
+      "activation": {
+        "input-side": $('#activation-template-left-td').html(),
+        "output-side": $('#activation-template-right-td').html(),
+        "special-input": $('#activation-special-input-row').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/SBO:0000656/"
+      },
+      "deactivation": {
+        "input-side": $('#deactivation-template-left-td').html(),
+        "output-side": $('#deactivation-template-right-td').html(),
+        "special-input": $('#deactivation-special-input-row').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000208/"
+      },
+      "catalytic": {
+        "input-side": $('#catalytic-template-left-td').html(),
+        "output-side": $('#catalytic-template-right-td').html(),
+        "special-input": $('#reaction-special-input-row').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000196/"
+      },
+      "transcription": {
+        "input-side": $('#transcription-template-left-td').html(),
+        "output-side": $('#transcription-template-right-td').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000573/"
+      },
+      "translation": {
+        "input-side": $('#translation-template-left-td').html(),
+        "output-side": $('#translation-template-right-td').html(),
+        "help-link": "http://sbgnbricks.org/BKO/full/entry/all/BKO:0000589/"
+      }
+    };
     return this;
   }
 });
